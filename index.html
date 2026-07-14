@@ -184,7 +184,7 @@ tbody tr:hover td{background:#16263a;}
 <div id="app">
   <div id="sidebar">
     <div class="sb-logo">
-      <h1>💧 BDA NETRAVATHI APARTMENTS 120 FLATS (PAHSE-1) Water Billing System</h1>
+      <h1>💧 BDA NETRAVATHI APARTMENT 120 FLATS (PHASE-1) Water Billing System</h1>
       <p id="flatCountLabel">Loading…</p>
     </div>
     <div id="dbBar">
@@ -309,11 +309,22 @@ async function ensureTables(){
       balance REAL DEFAULT 0,
       status TEXT DEFAULT 'unpaid',
       paid_date TEXT,
+      payment_method TEXT,
+      payment_comments TEXT,
+      payment_screenshot TEXT,
       PRIMARY KEY (month_key, flat_id)
     )`},
     {q:`CREATE INDEX IF NOT EXISTS idx_fp_month ON flat_payments(month_key)`},
     {q:`CREATE INDEX IF NOT EXISTS idx_bm_order ON billing_months(month_order)`},
   ]);
+  // Migration for existing databases created before payment method tracking was added.
+  // ALTER TABLE ... ADD COLUMN throws if the column already exists, so each is tried independently and errors are swallowed.
+  const migrations=[
+    `ALTER TABLE flat_payments ADD COLUMN payment_method TEXT`,
+    `ALTER TABLE flat_payments ADD COLUMN payment_comments TEXT`,
+    `ALTER TABLE flat_payments ADD COLUMN payment_screenshot TEXT`,
+  ];
+  for(const q of migrations){ try{ await sql([{q}]); }catch(e){ /* column already exists — ignore */ } }
 }
 
 /* ============================================================
@@ -353,7 +364,9 @@ async function loadState(){
       if(state.months[p.month_key]){
         state.months[p.month_key].flats[p.flat_id]={
           carryForward:+p.carry_forward, due:+p.due, paid:+p.paid,
-          balance:+p.balance, status:p.status, paidDate:p.paid_date||null
+          balance:+p.balance, status:p.status, paidDate:p.paid_date||null,
+          paymentMethod:p.payment_method||null, paymentComments:p.payment_comments||null,
+          paymentScreenshot:p.payment_screenshot||null
         };
       }
     }
@@ -378,8 +391,8 @@ async function saveMonthToTurso(key){
   for(const f of ALL_FLATS){
     const fd=m.flats[f.id]||{};
     stmts.push({
-      q:`INSERT OR REPLACE INTO flat_payments (month_key,flat_id,carry_forward,due,paid,balance,status,paid_date) VALUES (?,?,?,?,?,?,?,?)`,
-      params:[key,f.id,fd.carryForward||0,fd.due||0,fd.paid||0,fd.balance||0,fd.status||'unpaid',fd.paidDate||null]
+      q:`INSERT OR REPLACE INTO flat_payments (month_key,flat_id,carry_forward,due,paid,balance,status,paid_date,payment_method,payment_comments,payment_screenshot) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      params:[key,f.id,fd.carryForward||0,fd.due||0,fd.paid||0,fd.balance||0,fd.status||'unpaid',fd.paidDate||null,fd.paymentMethod||null,fd.paymentComments||null,fd.paymentScreenshot||null]
     });
   }
   await sql(stmts);
@@ -438,9 +451,12 @@ function computeMonthFlats(baseShare,prevMonth,existingFlats){
     const due=round2(baseShare+carryForward);
     const ex=existingFlats?existingFlats[f.id]:null;
     const paid=ex?ex.paid:0; const paidDate=ex?ex.paidDate:null;
+    const paymentMethod=ex?ex.paymentMethod:null;
+    const paymentComments=ex?ex.paymentComments:null;
+    const paymentScreenshot=ex?ex.paymentScreenshot:null;
     const balance=round2(due-paid);
     const status=balance<=0.004?'paid':(paid>0?'partial':'unpaid');
-    flats[f.id]={carryForward,due,paid,paidDate,balance,status};
+    flats[f.id]={carryForward,due,paid,paidDate,balance,status,paymentMethod,paymentComments,paymentScreenshot};
   }
   return flats;
 }
@@ -472,12 +488,19 @@ async function editMonthTotal(key,newTotal,prop){
   await saveMonthToTurso(key);
   if(prop){const idx=state.monthOrder.indexOf(key);for(let i=idx+1;i<state.monthOrder.length;i++) await saveMonthToTurso(state.monthOrder[i]);}
 }
-async function recordPayment(key,flatId,amount,date,prop){
+async function recordPayment(key,flatId,amount,date,prop,method,comments,screenshot){
   const f=state.months[key].flats[flatId];
   f.paid=round2(Math.max(0,amount));
   f.paidDate=f.paid>0?(date||new Date().toISOString().slice(0,10)):null;
   f.balance=round2(f.due-f.paid);
   f.status=f.balance<=0.004?'paid':(f.paid>0?'partial':'unpaid');
+  if(f.paid>0){
+    f.paymentMethod=method||null;
+    f.paymentComments=method==='cash'?(comments||null):null;
+    f.paymentScreenshot=method==='upi'?(screenshot||f.paymentScreenshot||null):null;
+  }else{
+    f.paymentMethod=null; f.paymentComments=null; f.paymentScreenshot=null;
+  }
   if(prop) propagateForward(key);
   await saveMonthToTurso(key);
   if(prop){const idx=state.monthOrder.indexOf(key);for(let i=idx+1;i<state.monthOrder.length;i++) await saveMonthToTurso(state.monthOrder[i]);}
@@ -808,6 +831,8 @@ function showTooltip(e,f){
     <div class="tt-row"><span>Paid</span><b>${inr(f.paid)}</b></div>
     <div class="tt-row"><span>Balance</span><b style="color:${f.balance>0.004?'var(--unpaid)':'var(--paid)'}">${inr(f.balance)}</b></div>
     <div class="tt-row"><span>Paid On</span><b>${f.paidDate||'—'}</b></div>
+    ${f.paymentMethod?`<div class="tt-row"><span>Method</span><b>${f.paymentMethod==='upi'?'📱 UPI':'💵 Cash'}</b></div>`:''}
+    ${f.paymentMethod==='cash'&&f.paymentComments?`<div class="tt-row"><span>Comment</span><b style="font-weight:500;">${f.paymentComments}</b></div>`:''}
     <div class="tt-status" style="color:${f.status==='paid'?'var(--paid)':f.status==='partial'?'var(--partial)':'var(--unpaid)'}">${f.status.toUpperCase()}</div>`;
   tt.style.display='block';moveTooltip(e);
 }
@@ -829,14 +854,19 @@ function renderTableView(key,flatsArr){
   container.innerHTML=`<div class="table-wrap"><table>
     <thead><tr>
       <th>Flat</th><th class="num">Base Share</th><th class="num">Carry Fwd</th><th class="num">Total Due</th>
-      <th class="num">Paid</th><th class="num">Balance</th><th>Status</th><th>Paid On</th><th></th>
+      <th class="num">Paid</th><th class="num">Balance</th><th>Status</th><th>Paid On</th><th>Method</th><th></th>
     </tr></thead><tbody id="flatsBody"></tbody>
   </table></div>`;
   const filtered=applyFilters(flatsArr);
   const body=document.getElementById('flatsBody');
   let html='',lastBlock=null;
   for(const f of filtered){
-    if(f.block!==lastBlock){html+=`<tr class="block-sep"><td colspan="9">BLOCK ${f.block}</td></tr>`;lastBlock=f.block;}
+    if(f.block!==lastBlock){html+=`<tr class="block-sep"><td colspan="10">BLOCK ${f.block}</td></tr>`;lastBlock=f.block;}
+    const methodCell=f.paymentMethod
+      ?(f.paymentMethod==='upi'
+        ?`<span title="${f.paymentScreenshot?'Screenshot attached':''}">📱 UPI ${f.paymentScreenshot?'📎':''}</span>`
+        :`<span title="${(f.paymentComments||'').replace(/"/g,'&quot;')}">💵 Cash</span>`)
+      :'<span style="color:var(--muted);">—</span>';
     html+=`<tr>
       <td><strong>${f.id}</strong> <span style="color:var(--muted);font-size:11px;">(${f.floor})</span></td>
       <td class="num">${inr(f.due-f.carryForward)}</td>
@@ -846,10 +876,11 @@ function renderTableView(key,flatsArr){
       <td class="num" style="color:${f.balance>0.004?'var(--unpaid)':'var(--muted)'}">${inr(f.balance)}</td>
       <td><span class="status-chip ${f.status}">${f.status.toUpperCase()}</span></td>
       <td style="color:var(--muted);font-size:12px;">${f.paidDate||'—'}</td>
+      <td style="font-size:12px;">${methodCell}</td>
       <td><button class="paybtn" data-flat="${f.id}" ${admin?'':'disabled'}>💳 ${admin?'Edit':'View'}</button></td>
     </tr>`;
   }
-  if(!filtered.length) html=`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:40px;">No flats match this filter.</td></tr>`;
+  if(!filtered.length) html=`<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:40px;">No flats match this filter.</td></tr>`;
   body.innerHTML=html;
   body.querySelectorAll('.paybtn').forEach(btn=>{btn.onclick=()=>{if(admin)openPaymentModal(key,btn.dataset.flat);};});
 }
@@ -1039,6 +1070,23 @@ function openPaymentModal(key,flatId){
       <input type="number" id="pAmount" min="0" step="0.01" value="${f.paid}">
       <label>Payment Date</label>
       <input type="date" id="pDate" value="${f.paidDate||new Date().toISOString().slice(0,10)}">
+      <div id="pMethodWrap">
+        <label>Payment Method</label>
+        <select id="pMethod">
+          <option value="">— Select —</option>
+          <option value="cash" ${f.paymentMethod==='cash'?'selected':''}>💵 Cash</option>
+          <option value="upi" ${f.paymentMethod==='upi'?'selected':''}>📱 UPI</option>
+        </select>
+        <div id="pCashWrap" style="display:none;">
+          <label>Comments</label>
+          <textarea id="pComments" rows="2" placeholder="e.g. Received by John, cash handed at office" style="width:100%;background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:8px 10px;border-radius:8px;font-size:12.5px;font-family:inherit;resize:vertical;">${f.paymentComments||''}</textarea>
+        </div>
+        <div id="pUpiWrap" style="display:none;">
+          <label>Payment Screenshot ${f.paymentScreenshot?'<span style="color:var(--paid);font-weight:600;">(uploaded ✓)</span>':''}</label>
+          <input type="file" id="pScreenshot" accept="image/*">
+          ${f.paymentScreenshot?`<div style="margin-top:8px;"><img src="${f.paymentScreenshot}" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--border2);"></div>`:''}
+        </div>
+      </div>
       ${!isLast?`<div class="checkrow"><input type="checkbox" id="pPropagate" checked><label for="pPropagate" style="margin:0;">Recalculate carry-forward in later months</label></div>`:''}
       <div class="err" id="pErr"></div>
       <div class="modalbtns">
@@ -1047,12 +1095,28 @@ function openPaymentModal(key,flatId){
       </div>
     </div></div>`;
   const statusEl=document.getElementById('pStatus'),amtEl=document.getElementById('pAmount'),dateEl=document.getElementById('pDate');
+  const methodEl=document.getElementById('pMethod'),methodWrap=document.getElementById('pMethodWrap');
+  const cashWrap=document.getElementById('pCashWrap'),upiWrap=document.getElementById('pUpiWrap');
+  let newScreenshotDataUrl=null;
+  function applyMethod(m){
+    cashWrap.style.display=m==='cash'?'block':'none';
+    upiWrap.style.display=m==='upi'?'block':'none';
+  }
   function applyStatus(s){
-    if(s==='paid'){amtEl.value=f.due;amtEl.readOnly=true;dateEl.disabled=false;}
-    else if(s==='unpaid'){amtEl.value=0;amtEl.readOnly=true;dateEl.value='';}
-    else{amtEl.readOnly=false;if(parseFloat(amtEl.value)<=0||parseFloat(amtEl.value)>=f.due||isNaN(parseFloat(amtEl.value)))amtEl.value=f.paid>0&&f.paid<f.due?f.paid:round2(f.due/2);if(!dateEl.value)dateEl.value=new Date().toISOString().slice(0,10);}
+    if(s==='paid'){amtEl.value=f.due;amtEl.readOnly=true;dateEl.disabled=false;methodWrap.style.display='block';}
+    else if(s==='unpaid'){amtEl.value=0;amtEl.readOnly=true;dateEl.value='';methodWrap.style.display='none';}
+    else{amtEl.readOnly=false;if(parseFloat(amtEl.value)<=0||parseFloat(amtEl.value)>=f.due||isNaN(parseFloat(amtEl.value)))amtEl.value=f.paid>0&&f.paid<f.due?f.paid:round2(f.due/2);if(!dateEl.value)dateEl.value=new Date().toISOString().slice(0,10);methodWrap.style.display='block';}
   }
   applyStatus(cur);statusEl.onchange=()=>applyStatus(statusEl.value);
+  applyMethod(methodEl.value);methodEl.onchange=()=>applyMethod(methodEl.value);
+  document.getElementById('pScreenshot').onchange=async(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    try{
+      const raw=await readFileAsDataUrl(file);
+      newScreenshotDataUrl=await resizeImageDataUrl(raw,1000,0.8);
+      toast('📎 Screenshot ready to save','ok');
+    }catch(err){toast('⚠ Could not read screenshot','err');}
+  };
   document.getElementById('cancelBtn').onclick=closeModal;
   document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
   document.getElementById('saveBtn').onclick=async()=>{
@@ -1061,11 +1125,17 @@ function openPaymentModal(key,flatId){
     if(isNaN(amt)||amt<0){errEl.textContent='Enter a valid amount';return;}
     if(s==='partial'&&amt>=f.due){errEl.textContent='Partial must be less than total due';return;}
     if(s==='partial'&&amt<=0){errEl.textContent='Partial must be greater than ₹0';return;}
+    const method=s==='unpaid'?null:(methodEl.value||null);
+    if(s!=='unpaid'&&!method){errEl.textContent='Select a payment method (Cash or UPI)';return;}
+    const comments=method==='cash'?document.getElementById('pComments').value.trim():null;
+    if(method==='cash'&&!comments){errEl.textContent='Please add a comment for cash payment';return;}
+    const screenshot=method==='upi'?(newScreenshotDataUrl||f.paymentScreenshot||null):null;
+    if(method==='upi'&&!screenshot){errEl.textContent='Please attach a UPI payment screenshot';return;}
     const date=s==='unpaid'?null:dateEl.value;
     const prop=document.getElementById('pPropagate')?document.getElementById('pPropagate').checked:true;
     setBtnLoading('saveBtn',true,'Saving…');
     try{
-      await recordPayment(key,flatId,amt,date,prop);
+      await recordPayment(key,flatId,amt,date,prop,method,comments,screenshot);
       closeModal();render();toast(`✅ ${flatId} marked ${s.toUpperCase()}`,'ok');
     }catch(e){errEl.textContent='❌ Save failed: '+e.message;setBtnLoading('saveBtn',false,'Save Payment');}
   };
@@ -1109,16 +1179,16 @@ function exportPDF(key){
   const collected=Object.values(m.flats).reduce((s,f)=>s+f.paid,0);
   const pending=round2(Object.values(m.flats).reduce((s,f)=>s+f.balance,0));
   doc.text(`Collected: ${inr(collected)}   Pending: ${inr(pending)}`,14,30);
-  const rows=ALL_FLATS.map(f=>{const d=m.flats[f.id];return[f.id,inr(d.carryForward),inr(d.due),inr(d.paid),inr(d.balance),d.status.toUpperCase(),d.paidDate||'—'];});
-  doc.autoTable({startY:36,head:[['Flat','Carry Fwd','Total Due','Paid','Balance','Status','Paid On']],body:rows,styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[20,60,110]},
+  const rows=ALL_FLATS.map(f=>{const d=m.flats[f.id];return[f.id,inr(d.carryForward),inr(d.due),inr(d.paid),inr(d.balance),d.status.toUpperCase(),d.paidDate||'—',d.paymentMethod?d.paymentMethod.toUpperCase():'—'];});
+  doc.autoTable({startY:36,head:[['Flat','Carry Fwd','Total Due','Paid','Balance','Status','Paid On','Method']],body:rows,styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[20,60,110]},
     didParseCell(data){if(data.section==='body'&&data.column.index===5){const v=data.cell.raw;if(v==='PAID')data.cell.styles.textColor=[34,150,80];else if(v==='PARTIAL')data.cell.styles.textColor=[180,140,10];else data.cell.styles.textColor=[200,40,40];}}
   });
   doc.save(`WaterBill_${key}.pdf`);toast('⬇ PDF downloaded','ok');
 }
 function exportExcel(key){
   const m=state.months[key];
-  const header=['Flat ID','Block','Floor','Base Share','Carry Forward','Total Due','Paid','Balance','Status','Paid On'];
-  const rows=ALL_FLATS.map(f=>{const d=m.flats[f.id];return[f.id,f.block,f.floor,round2(d.due-d.carryForward),d.carryForward,d.due,d.paid,d.balance,d.status,d.paidDate||''];});
+  const header=['Flat ID','Block','Floor','Base Share','Carry Forward','Total Due','Paid','Balance','Status','Paid On','Payment Method','Comments (Cash)'];
+  const rows=ALL_FLATS.map(f=>{const d=m.flats[f.id];return[f.id,f.block,f.floor,round2(d.due-d.carryForward),d.carryForward,d.due,d.paid,d.balance,d.status,d.paidDate||'',d.paymentMethod?d.paymentMethod.toUpperCase():'',d.paymentMethod==='cash'?(d.paymentComments||''):''];});
   const ws=XLSX.utils.aoa_to_sheet([[`Water Billing Statement — ${m.label}`],[`Total Bill: ${m.totalAmount}   Base Share: ${m.baseShare}`],[],header,...rows]);
   ws['!cols']=header.map(()=>({wch:15}));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,key);
