@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>💧 Water Billing System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg:#0b1320; --panel:#111c2b; --panel2:#162133; --panel3:#1c2d42;
+  --border:#1e3048; --border2:#27405c;
+  --text:#dce9f5; --muted:#6b8aaa; --muted2:#4a6480;
+  --accent:#2d7dd2; --accent2:#4a9de8; --accent3:#1a5fa8;
+  --paid:#1fb26b; --paid-bg:rgba(31,178,107,.12);
+  --partial:#e0a620; --partial-bg:rgba(224,166,32,.12);
+  --unpaid:#e8424a; --unpaid-bg:rgba(232,66,74,.12);
+  --radius:10px; --shadow:0 4px 20px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px;}
+
+#app{display:flex;height:100vh;}
+
+/* SIDEBAR */
+#sidebar{width:260px;min-width:260px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sb-logo{padding:18px 16px 12px;border-bottom:1px solid var(--border);}
+.sb-logo h1{font-size:14px;font-weight:700;letter-spacing:.3px;}
+.sb-logo p{font-size:11px;color:var(--muted);margin-top:3px;}
+
+#dbBar{margin:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:11px;}
+.sb-label{color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:6px;}
+.sb-label span{font-weight:600;color:var(--text);}
+#dbStatus{font-size:10px;color:var(--muted);margin-top:5px;}
+.status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px;background:var(--muted2);}
+.status-dot.ok{background:var(--paid);}
+.status-dot.warn{background:var(--partial);}
+.status-dot.err{background:var(--unpaid);}
+
+#configBtn{margin-top:7px;width:100%;padding:6px 0;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--accent2);font-size:11px;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s;}
+#configBtn:hover{background:var(--panel3);border-color:var(--accent);}
+
+#authBox{margin:0 12px 2px;padding:8px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:6px;}
+.astat{font-size:11.5px;font-weight:700;}
+.astat.on{color:var(--paid);}
+.astat.off{color:var(--muted);}
+#authBtn{padding:4px 10px;font-size:11px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--text);cursor:pointer;}
+#authBtn:hover{border-color:var(--accent);}
+
+#newMonthBtn{width:calc(100% - 24px);margin:8px 12px;padding:10px;border:none;border-radius:var(--radius);background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer;transition:background .15s;}
+#newMonthBtn:hover{background:var(--accent2);}
+#newMonthBtn:disabled{background:var(--panel3);color:var(--muted);cursor:not-allowed;}
+
+#monthList{flex:1;overflow-y:auto;padding:4px 8px 12px;}
+.month-item{padding:10px;border-radius:8px;cursor:pointer;margin-bottom:4px;border:1px solid transparent;transition:background .12s;}
+.month-item:hover{background:var(--panel2);}
+.month-item.active{background:var(--panel2);border-color:var(--accent);}
+.month-item .mlabel{font-weight:600;font-size:13px;display:flex;justify-content:space-between;align-items:center;}
+.mtag{font-size:9px;padding:2px 7px;border-radius:20px;background:var(--panel3);color:var(--muted);font-weight:700;letter-spacing:.3px;}
+.month-item.active .mtag.current{background:var(--accent3);color:var(--accent2);}
+.month-item .msub{font-size:11px;color:var(--muted);margin-top:4px;}
+.sb-footer{padding:10px 14px;border-top:1px solid var(--border);font-size:10px;color:var(--muted2);line-height:1.5;}
+
+/* MAIN */
+#main{flex:1;overflow-y:auto;padding:22px 28px 70px;}
+#topbar{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px;}
+#topbar h2{font-size:21px;font-weight:800;}
+#topbar .sub{color:var(--muted);font-size:12px;margin-top:5px;}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+
+.btn{padding:8px 13px;border-radius:8px;border:1px solid var(--border2);background:var(--panel2);color:var(--text);font-size:12.5px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:border-color .12s,background .12s;}
+.btn:hover{border-color:var(--accent);background:var(--panel3);}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+.btn.primary:hover{background:var(--accent2);border-color:var(--accent2);}
+.btn.danger{color:#f87171;}
+.btn.danger:hover{border-color:var(--unpaid);background:rgba(232,66,74,.08);}
+.btn:disabled{opacity:.35;cursor:not-allowed;pointer-events:none;}
+
+.viewToggle{display:flex;border:1px solid var(--border2);border-radius:8px;overflow:hidden;}
+.viewToggle button{border:none;background:var(--panel2);color:var(--muted);padding:8px 14px;font-size:12.5px;cursor:pointer;font-weight:600;}
+.viewToggle button.active{background:var(--accent3);color:var(--accent2);}
+
+#cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;}
+.card .clabel{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
+.card .cval{font-size:20px;font-weight:800;margin-top:7px;}
+.card.paidcol .cval{color:var(--paid);}
+.card.pendcol .cval{color:var(--unpaid);}
+
+#controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+#controls input[type=text],#controls select{background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:8px 10px;border-radius:8px;font-size:12.5px;}
+#controls input[type=text]{width:200px;}
+#controls select{cursor:pointer;}
+#controls input[type=text]:focus,#controls select:focus{outline:none;border-color:var(--accent);}
+
+.table-wrap{overflow-x:auto;border-radius:var(--radius);}
+table{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);min-width:700px;}
+thead th{text-align:left;background:var(--panel2);color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;padding:10px 12px;position:sticky;top:0;z-index:1;white-space:nowrap;}
+tbody td{padding:9px 12px;border-top:1px solid var(--border);}
+tbody tr.block-sep td{background:#0d1929;font-weight:800;color:var(--accent2);font-size:11.5px;padding-top:14px;letter-spacing:.4px;}
+tbody tr:hover td{background:#16263a;}
+.status-chip{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;display:inline-block;white-space:nowrap;}
+.status-chip.paid{background:var(--paid-bg);color:var(--paid);}
+.status-chip.partial{background:var(--partial-bg);color:var(--partial);}
+.status-chip.unpaid{background:var(--unpaid-bg);color:var(--unpaid);}
+.paybtn{padding:5px 11px;font-size:11.5px;border-radius:6px;border:1px solid var(--border2);background:var(--panel2);color:var(--text);cursor:pointer;white-space:nowrap;transition:border-color .12s;}
+.paybtn:hover{border-color:var(--accent);}
+.paybtn:disabled{opacity:.3;cursor:not-allowed;}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+
+#blockGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;}
+.block-card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+.block-card .bc-head{background:var(--panel2);padding:11px 15px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);}
+.bc-head .bname{font-weight:800;font-size:14px;letter-spacing:.6px;color:var(--accent2);}
+.bc-head .bstats{font-size:10.5px;color:var(--muted);font-weight:600;}
+.bc-body{padding:12px 14px;display:flex;flex-direction:column;gap:9px;}
+.bc-row{display:flex;align-items:center;gap:8px;}
+.bc-floor{width:34px;font-size:9.5px;color:var(--muted2);font-weight:800;flex-shrink:0;letter-spacing:.3px;}
+.bc-tiles{display:flex;gap:7px;flex-wrap:wrap;flex:1;}
+.tile{min-width:50px;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12.5px;color:#fff;cursor:default;transition:transform .1s,box-shadow .1s;}
+.tile.status-paid{background:linear-gradient(145deg,#22c77a,#18985c);}
+.tile.status-partial{background:linear-gradient(145deg,#e8b020,#c9920e);}
+.tile.status-unpaid{background:linear-gradient(145deg,#e84040,#c42a2a);}
+.tile.admin-edit{cursor:pointer;}
+.tile.admin-edit:hover{transform:translateY(-2px);box-shadow:0 5px 14px rgba(0,0,0,.4);}
+
+#flatTooltip{position:fixed;z-index:900;background:#07111b;border:1px solid var(--accent3);border-radius:9px;padding:11px 13px;font-size:12px;line-height:1.65;box-shadow:var(--shadow);pointer-events:none;display:none;min-width:180px;}
+#flatTooltip .tt-title{font-weight:800;font-size:13px;margin-bottom:5px;color:var(--accent2);}
+#flatTooltip .tt-row{display:flex;justify-content:space-between;gap:12px;color:var(--muted);}
+#flatTooltip .tt-row b{color:var(--text);font-weight:600;}
+#flatTooltip .tt-status{margin-top:5px;font-weight:800;font-size:12px;}
+
+.legend{display:flex;gap:16px;align-items:center;margin:4px 0 16px;font-size:11.5px;color:var(--muted);flex-wrap:wrap;}
+.legend span{display:flex;align-items:center;gap:6px;}
+.legend i{width:11px;height:11px;border-radius:3px;display:inline-block;}
+.legend i.paid{background:var(--paid);}
+.legend i.partial{background:var(--partial);}
+.legend i.unpaid{background:var(--unpaid);}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;z-index:1000;}
+.modal{background:var(--panel);border:1px solid var(--border2);border-radius:12px;padding:22px 24px;width:420px;max-width:92vw;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto;}
+.modal h3{margin:0 0 16px;font-size:16px;font-weight:800;}
+.modal label{display:block;font-size:11.5px;color:var(--muted);margin:12px 0 5px;font-weight:600;letter-spacing:.2px;}
+.modal input,.modal select,.modal textarea{width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--border2);background:var(--panel2);color:var(--text);font-size:13px;font-family:inherit;}
+.modal input:focus,.modal select:focus{outline:none;border-color:var(--accent);}
+.modal .modalbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;}
+.modal .hint{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.5;}
+.modal .err{font-size:12px;color:var(--unpaid);margin-top:9px;min-height:14px;}
+.checkrow{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--muted);}
+.lockbadge{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;padding:7px 11px;background:var(--panel2);border-radius:8px;border:1px solid var(--border);}
+.empty{text-align:center;padding:70px 20px;color:var(--muted);}
+.empty h2{font-size:22px;margin-bottom:12px;color:var(--text);}
+.empty p{font-size:13px;line-height:1.7;max-width:440px;margin:0 auto;}
+
+/* setup box */
+.setup-box{background:var(--panel2);border:1px solid var(--border2);border-radius:12px;padding:18px 20px;margin-top:20px;max-width:480px;text-align:left;}
+.setup-box h3{font-size:14px;font-weight:700;margin-bottom:10px;color:var(--accent2);}
+.setup-box .field{margin-bottom:10px;}
+.setup-box label{font-size:11px;color:var(--muted);display:block;margin-bottom:4px;font-weight:600;}
+.setup-box input{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--panel);color:var(--text);font-size:12px;font-family:monospace;}
+.setup-box input:focus{outline:none;border-color:var(--accent);}
+.setup-hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;}
+
+#toastContainer{position:fixed;bottom:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--panel2);border:1px solid var(--border2);padding:10px 16px;border-radius:9px;font-size:13px;box-shadow:var(--shadow);animation:fadeUp .2s ease;max-width:340px;}
+.toast.ok{border-left:3px solid var(--paid);}
+.toast.warn{border-left:3px solid var(--partial);}
+.toast.err{border-left:3px solid var(--unpaid);}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
+/* spinner */
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--accent2);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+@media(max-width:800px){#sidebar{width:220px;min-width:220px;}#main{padding:14px 14px 60px;}}
+@media(max-width:600px){#app{flex-direction:column;}#sidebar{width:100%;min-width:unset;height:auto;max-height:50vh;}#main{overflow-y:auto;}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div class="sb-logo">
+      <h1>💧 BDA NETRAVATHI APARTMENTS 120 FLATS (PAHSE-1) Water Billing System</h1>
+      <p id="flatCountLabel">Loading…</p>
+    </div>
+    <div id="dbBar">
+      <div class="sb-label">☁ Turso Cloud DB <span id="dbName">Not configured</span></div>
+      <div id="dbStatus"><span class="status-dot" id="dbDot"></span><span id="dbStatusText">Add your Turso URL &amp; token below</span></div>
+      <button id="configBtn">⚙ Configure Database</button>
+    </div>
+    <div id="authBox">
+      <span class="astat off" id="authStatText">🔒 View Only</span>
+      <button id="authBtn">Admin Login</button>
+    </div>
+    <button id="newMonthBtn" disabled>+ New Month Bill</button>
+    <div id="monthList"></div>
+    <div class="sb-footer">Data is stored in Turso cloud (SQLite). Accessible from any device, any browser, anywhere.</div>
+  </div>
+  <div id="main"></div>
+</div>
+<div id="modalRoot"></div>
+<div id="flatTooltip"></div>
+<div id="toastContainer"></div>
+
+<script>
+'use strict';
+
+/* ============================================================
+   ADMIN AUTH  (SHA-256 of "admin:Water@120")
+   ============================================================ */
+const ADMIN_HASH = "3991b1d4dc147658e648a9541f6cf5428490c387a13a7e9e16c2a649c61735a4";
+let adminMode = (sessionStorage.getItem('wbms_admin') === '1');
+async function sha256Hex(str){ const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str)); return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
+function isAdmin(){ return adminMode; }
+
+/* ============================================================
+   CONFIG — edit to match your building
+   ============================================================ */
+const FLOORS=[{code:'GRD',prefix:0},{code:'1ST',prefix:1},{code:'2ND',prefix:2},{code:'3RD',prefix:3}];
+const BLOCKS=[
+  {block:'A',units:4},{block:'B',units:4},{block:'C',units:4},{block:'D',units:4},
+  {block:'E',units:4},{block:'F',units:4},{block:'G',units:4},{block:'H',units:2},
+];
+function generateFlats(){
+  const out=[];
+  for(const b of BLOCKS) for(const f of FLOORS) for(let u=1;u<=b.units;u++){
+    const num=String(f.prefix*100+u).padStart(3,'0');
+    out.push({id:`${b.block}-${num}`,block:b.block,floor:f.code,num});
+  }
+  return out;
+}
+const ALL_FLATS=generateFlats();
+const TOTAL_FLATS=ALL_FLATS.length;
+
+/* ============================================================
+   TURSO CONFIG (paste your values here)
+   ============================================================ */
+const TURSO_URL   = 'https://water-billing-jagsaam7.aws-ap-south-1.turso.io';
+const TURSO_TOKEN = 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODQwMTI4MTIsImlkIjoiMDE5ZjVmNTItMTkwMS03OTVlLWIzMTQtNjA4MWQ0ODIwNTJiIiwia2lkIjoiTVgwNUM3d2czMllVdVJTblR2dHBtczlrRXRhbXlVRWpZTzZYRl9UMFRSSSIsInJpZCI6IjM1OWJiZmZkLWQ1NTEtNGYwNi04YWZmLTc2MWJlODc4YTg1ZSJ9.aJWzjeanWXGeeeTHx-GYDa5ESBFU7Llyc1LsZKKeuWMi6gqjWfY6DEpfJcaUt0kcAtXHmy-OZYuVYKze5hJUDw';
+
+function isTursoConfigured(){ return !!(TURSO_URL && TURSO_TOKEN && TURSO_TOKEN!=='your-token-here'); }
+
+/* ============================================================
+   TURSO SQL HELPER
+   ============================================================ */
+async function sql(statements){
+  if(!isTursoConfigured()) throw new Error('Turso not configured');
+  const requests = statements.map(s=>({
+    type:'execute',
+    stmt:{
+      sql: s.q,
+      args: (s.params||[]).map(v=>{
+        if(v===null||v===undefined) return {type:'null'};
+        if(typeof v==='number') return {type:'float',value:v};
+        return {type:'text',value:String(v)};
+      })
+    }
+  }));
+  requests.push({type:'close'});
+  const res = await fetch(`${TURSO_URL}/v2/pipeline`,{
+    method:'POST',
+    headers:{
+      'Authorization':`Bearer ${TURSO_TOKEN}`,
+      'Content-Type':'application/json',
+    },
+    body: JSON.stringify({requests})
+  });
+  if(!res.ok){
+    const txt = await res.text();
+    throw new Error(`Turso HTTP ${res.status}: ${txt.slice(0,200)}`);
+  }
+  const data = await res.json();
+  // Check for per-statement errors
+  for(const r of data.results||[]){
+    if(r.type==='error') throw new Error(r.error?.message||'Turso error');
+  }
+  return data.results||[];
+}
+
+function rowsToObjects(result){
+  if(!result?.response?.result) return [];
+  const {cols,rows}=result.response.result;
+  return rows.map(r=>Object.fromEntries(cols.map((c,i)=>[c.name, r[i]?.value??null])));
+}
+
+/* ---- ensure tables exist (run on first load / after config) ---- */
+async function ensureTables(){
+  await sql([
+    {q:`CREATE TABLE IF NOT EXISTS billing_months (
+      key TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      total_amount REAL DEFAULT 0,
+      base_share REAL DEFAULT 0,
+      notes TEXT DEFAULT '',
+      has_bill_file INTEGER DEFAULT 0,
+      month_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`},
+    {q:`CREATE TABLE IF NOT EXISTS flat_payments (
+      month_key TEXT NOT NULL,
+      flat_id TEXT NOT NULL,
+      carry_forward REAL DEFAULT 0,
+      due REAL DEFAULT 0,
+      paid REAL DEFAULT 0,
+      balance REAL DEFAULT 0,
+      status TEXT DEFAULT 'unpaid',
+      paid_date TEXT,
+      PRIMARY KEY (month_key, flat_id)
+    )`},
+    {q:`CREATE INDEX IF NOT EXISTS idx_fp_month ON flat_payments(month_key)`},
+    {q:`CREATE INDEX IF NOT EXISTS idx_bm_order ON billing_months(month_order)`},
+  ]);
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let state={months:{},monthOrder:[]};
+let selectedMonth=null;
+let currentView='grid';
+let filters={search:'',block:'ALL',status:'ALL'};
+
+const round2=n=>Math.round((n+Number.EPSILON)*100)/100;
+const inr=n=>'₹'+(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const monthLabel=key=>{const[y,m]=key.split('-');return new Date(+y,+m-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'});};
+
+/* ============================================================
+   LOAD / SAVE STATE  (Turso)
+   ============================================================ */
+async function loadState(){
+  updateDbUI('loading','Connecting…');
+  try{
+    await ensureTables();
+    const results=await sql([
+      {q:'SELECT * FROM billing_months ORDER BY month_order ASC'},
+      {q:'SELECT * FROM flat_payments'},
+    ]);
+    const months=rowsToObjects(results[0]);
+    const payments=rowsToObjects(results[1]);
+    state={months:{},monthOrder:[]};
+    for(const m of months){
+      state.monthOrder.push(m.key);
+      state.months[m.key]={
+        label:m.label, totalAmount:+m.total_amount, baseShare:+m.base_share,
+        notes:m.notes||'', hasBillFile:!!+m.has_bill_file, flats:{}
+      };
+    }
+    for(const p of payments){
+      if(state.months[p.month_key]){
+        state.months[p.month_key].flats[p.flat_id]={
+          carryForward:+p.carry_forward, due:+p.due, paid:+p.paid,
+          balance:+p.balance, status:p.status, paidDate:p.paid_date||null
+        };
+      }
+    }
+    if(state.monthOrder.length) selectedMonth=state.monthOrder[state.monthOrder.length-1];
+    updateDbUI('ok','Connected · '+TURSO_URL.replace('https://','').split('.')[0]);
+    document.getElementById('flatCountLabel').textContent=`${TOTAL_FLATS} Flats · Blocks ${BLOCKS[0].block}–${BLOCKS[BLOCKS.length-1].block}`;
+    return true;
+  }catch(e){
+    updateDbUI('err','Error: '+e.message.slice(0,40));
+    toast('⚠ Turso error: '+e.message,'err');
+    return false;
+  }
+}
+
+async function saveMonthToTurso(key){
+  const m=state.months[key];
+  const order=state.monthOrder.indexOf(key);
+  const stmts=[{
+    q:`INSERT OR REPLACE INTO billing_months (key,label,total_amount,base_share,notes,has_bill_file,month_order) VALUES (?,?,?,?,?,?,?)`,
+    params:[key,m.label,m.totalAmount,m.baseShare,m.notes||'',m.hasBillFile?1:0,order]
+  }];
+  for(const f of ALL_FLATS){
+    const fd=m.flats[f.id]||{};
+    stmts.push({
+      q:`INSERT OR REPLACE INTO flat_payments (month_key,flat_id,carry_forward,due,paid,balance,status,paid_date) VALUES (?,?,?,?,?,?,?,?)`,
+      params:[key,f.id,fd.carryForward||0,fd.due||0,fd.paid||0,fd.balance||0,fd.status||'unpaid',fd.paidDate||null]
+    });
+  }
+  await sql(stmts);
+}
+
+async function deleteMonthFromTurso(key){
+  await sql([{q:'DELETE FROM billing_months WHERE key=?',params:[key]}]);
+  // flat_payments cascade via app logic (we delete manually too for safety)
+  await sql([{q:'DELETE FROM flat_payments WHERE month_key=?',params:[key]}]);
+}
+
+/* ---- bill image stored as base64 text in a separate table ---- */
+async function ensureBillTable(){
+  await sql([{q:`CREATE TABLE IF NOT EXISTS bill_files (month_key TEXT PRIMARY KEY, name TEXT, type TEXT, data TEXT)`}]);
+}
+async function saveBillFile(key,name,type,dataUrl){
+  await ensureBillTable();
+  await sql([{q:`INSERT OR REPLACE INTO bill_files (month_key,name,type,data) VALUES (?,?,?,?)`,params:[key,name,type,dataUrl]}]);
+  if(state.months[key]){ state.months[key].hasBillFile=true; await saveMonthToTurso(key); }
+}
+async function getBillFile(key){
+  await ensureBillTable();
+  const res=await sql([{q:'SELECT name,type,data FROM bill_files WHERE month_key=?',params:[key]}]);
+  const rows=rowsToObjects(res[0]);
+  if(!rows.length) return null;
+  return {name:rows[0].name,type:rows[0].type,dataUrl:rows[0].data};
+}
+async function deleteBillFile(key){
+  await ensureBillTable();
+  await sql([{q:'DELETE FROM bill_files WHERE month_key=?',params:[key]}]);
+  if(state.months[key]){ state.months[key].hasBillFile=false; await saveMonthToTurso(key); }
+}
+
+/* ============================================================
+   DB UI
+   ============================================================ */
+function updateDbUI(status,msg){
+  const dot=document.getElementById('dbDot');
+  const txt=document.getElementById('dbStatusText');
+  const nm =document.getElementById('dbName');
+  dot.className='status-dot '+(status==='ok'?'ok':status==='loading'?'warn':'err');
+  txt.textContent=msg;
+  nm.textContent=isTursoConfigured()?(TURSO_URL.replace('https://','').split('.')[0].slice(-20)||'configured'):'Not configured';
+  document.getElementById('newMonthBtn').disabled=!(status==='ok'&&isAdmin());
+}
+
+/* ============================================================
+   BILLING LOGIC
+   ============================================================ */
+function prevKeyOf(key){const i=state.monthOrder.indexOf(key);return i>0?state.monthOrder[i-1]:null;}
+function computeMonthFlats(baseShare,prevMonth,existingFlats){
+  const flats={};
+  for(const f of ALL_FLATS){
+    const prevF=prevMonth?prevMonth.flats[f.id]:null;
+    const carryForward=prevF?round2(Math.max(0,prevF.due-prevF.paid)):0;
+    const due=round2(baseShare+carryForward);
+    const ex=existingFlats?existingFlats[f.id]:null;
+    const paid=ex?ex.paid:0; const paidDate=ex?ex.paidDate:null;
+    const balance=round2(due-paid);
+    const status=balance<=0.004?'paid':(paid>0?'partial':'unpaid');
+    flats[f.id]={carryForward,due,paid,paidDate,balance,status};
+  }
+  return flats;
+}
+function recomputeMonth(key,newTotal){
+  const m=state.months[key];
+  const total=newTotal!==undefined?newTotal:m.totalAmount;
+  const baseShare=round2(total/TOTAL_FLATS);
+  const prev=state.months[prevKeyOf(key)]||null;
+  m.totalAmount=total; m.baseShare=baseShare;
+  m.flats=computeMonthFlats(baseShare,prev,m.flats);
+}
+function propagateForward(fromKey){
+  const idx=state.monthOrder.indexOf(fromKey);
+  for(let i=idx+1;i<state.monthOrder.length;i++) recomputeMonth(state.monthOrder[i]);
+}
+async function createMonth(key,label,totalAmount,notes){
+  state.months[key]={label,totalAmount:0,baseShare:0,notes:notes||'',hasBillFile:false,flats:{}};
+  if(!state.monthOrder.includes(key)){state.monthOrder.push(key);state.monthOrder.sort();}
+  recomputeMonth(key,totalAmount);
+  propagateForward(key);
+  await saveMonthToTurso(key);
+  // propagated months also need saving
+  const idx=state.monthOrder.indexOf(key);
+  for(let i=idx+1;i<state.monthOrder.length;i++) await saveMonthToTurso(state.monthOrder[i]);
+}
+async function editMonthTotal(key,newTotal,prop){
+  recomputeMonth(key,newTotal);
+  if(prop) propagateForward(key);
+  await saveMonthToTurso(key);
+  if(prop){const idx=state.monthOrder.indexOf(key);for(let i=idx+1;i<state.monthOrder.length;i++) await saveMonthToTurso(state.monthOrder[i]);}
+}
+async function recordPayment(key,flatId,amount,date,prop){
+  const f=state.months[key].flats[flatId];
+  f.paid=round2(Math.max(0,amount));
+  f.paidDate=f.paid>0?(date||new Date().toISOString().slice(0,10)):null;
+  f.balance=round2(f.due-f.paid);
+  f.status=f.balance<=0.004?'paid':(f.paid>0?'partial':'unpaid');
+  if(prop) propagateForward(key);
+  await saveMonthToTurso(key);
+  if(prop){const idx=state.monthOrder.indexOf(key);for(let i=idx+1;i<state.monthOrder.length;i++) await saveMonthToTurso(state.monthOrder[i]);}
+}
+async function deleteMonth(key){
+  await deleteMonthFromTurso(key);
+  const idx=state.monthOrder.indexOf(key);
+  state.monthOrder.splice(idx,1);
+  delete state.months[key];
+}
+
+/* ============================================================
+   IMAGE HELPERS
+   ============================================================ */
+function readFileAsDataUrl(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(new Error('read failed'));r.readAsDataURL(file);});}
+function resizeImageDataUrl(dataUrl,maxDim=1200,quality=0.82){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      let {width,height}=img;
+      if(width>maxDim||height>maxDim){const s=maxDim/Math.max(width,height);width=Math.round(width*s);height=Math.round(height*s);}
+      const c=document.createElement('canvas');c.width=width;c.height=height;
+      c.getContext('2d').drawImage(img,0,0,width,height);
+      res(c.toDataURL('image/jpeg',quality));
+    };
+    img.onerror=()=>res(dataUrl);
+    img.src=dataUrl;
+  });
+}
+async function extractAmountFromImage(dataUrl,mediaType){
+  const base64=dataUrl.split(',')[1];
+  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:200,messages:[{role:'user',content:[
+      {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
+      {type:'text',text:'This is a water department utility bill. Find the total payable amount. Reply with ONLY the numeric amount — no ₹ symbol, no commas, no words. Example: 48250.50 . If unclear, reply exactly: UNKNOWN'}
+    ]}]})
+  });
+  const data=await resp.json();
+  return (data.content||[]).map(c=>c.text||'').join('').trim();
+}
+
+/* ============================================================
+   AUTH
+   ============================================================ */
+function renderAuthBox(){
+  const statEl=document.getElementById('authStatText');
+  const btnEl=document.getElementById('authBtn');
+  const nmBtn=document.getElementById('newMonthBtn');
+  if(isAdmin()){
+    statEl.textContent='🔓 Admin';statEl.className='astat on';
+    btnEl.textContent='Logout';
+    nmBtn.disabled=!isTursoConfigured();
+  } else {
+    statEl.textContent='🔒 View Only';statEl.className='astat off';
+    btnEl.textContent='Admin Login';nmBtn.disabled=true;
+  }
+  btnEl.onclick=()=>isAdmin()?logoutAdmin():openLoginModal();
+}
+function logoutAdmin(){adminMode=false;sessionStorage.removeItem('wbms_admin');renderAuthBox();render();toast('Logged out — view only');}
+function openLoginModal(){
+  document.getElementById('modalRoot').innerHTML=`
+    <div class="overlay" id="ov"><div class="modal">
+      <h3>🔐 Admin Login</h3>
+      <label>Username</label><input type="text" id="lUser" autocomplete="username" placeholder="admin">
+      <label>Password</label><input type="password" id="lPass" autocomplete="current-password" placeholder="Password">
+      <div class="err" id="lErr"></div>
+      <div class="hint">Default: admin / Water@120</div>
+      <div class="modalbtns">
+        <button class="btn" id="cancelBtn">Cancel</button>
+        <button class="btn primary" id="loginBtn">Login</button>
+      </div>
+    </div></div>`;
+  document.getElementById('cancelBtn').onclick=closeModal;
+  document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
+  const doLogin=async()=>{
+    const u=document.getElementById('lUser').value.trim(),p=document.getElementById('lPass').value;
+    const errEl=document.getElementById('lErr');
+    if(!u||!p){errEl.textContent='Enter both username and password';return;}
+    const hash=await sha256Hex(`${u}:${p}`);
+    if(hash===ADMIN_HASH){adminMode=true;sessionStorage.setItem('wbms_admin','1');closeModal();renderAuthBox();render();toast('✅ Logged in as Admin','ok');}
+    else errEl.textContent='❌ Invalid credentials';
+  };
+  document.getElementById('loginBtn').onclick=doLogin;
+  document.getElementById('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+}
+
+/* ============================================================
+   CONFIG MODAL
+   ============================================================ */
+function openConfigModal(){
+  document.getElementById('modalRoot').innerHTML=`
+    <div class="overlay" id="ov"><div class="modal" style="width:460px;">
+      <h3>⚙ Turso Database Configuration</h3>
+      <div class="hint" style="margin-top:0;line-height:1.7;">
+        Credentials are now set directly in the code (search for <strong>TURSO_URL</strong> / <strong>TURSO_TOKEN</strong> near the top of the &lt;script&gt; block) rather than entered here.
+      </div>
+      <label>Database URL</label>
+      <input type="text" id="cfgUrl" value="${TURSO_URL}" readonly>
+      <label>Auth Token</label>
+      <input type="password" id="cfgToken" value="${TURSO_TOKEN==='your-token-here'?'':TURSO_TOKEN}" placeholder="not set" readonly>
+      <div class="err" id="cfgErr"></div>
+      <div class="hint">${isTursoConfigured()?'Connected using the credentials hardcoded in the file.':'Add your token in the code, then reload the page.'}</div>
+      <div class="modalbtns">
+        <button class="btn" id="cancelBtn">Close</button>
+        <button class="btn primary" id="testBtn">🔄 Retry Connection</button>
+      </div>
+    </div></div>`;
+  document.getElementById('cancelBtn').onclick=closeModal;
+  document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
+  document.getElementById('testBtn').onclick=async()=>{
+    const btn=document.getElementById('testBtn');
+    btn.innerHTML='<span class="spinner"></span>Connecting…';btn.disabled=true;
+    const ok=await loadState();
+    if(ok){closeModal();render();toast('✅ Connected to Turso!','ok');}
+    else{document.getElementById('cfgErr').textContent='Connection failed — check TURSO_URL/TURSO_TOKEN in the code';btn.innerHTML='🔄 Retry Connection';btn.disabled=false;}
+  };
+}
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+function renderSidebar(){
+  const list=document.getElementById('monthList');
+  if(!isTursoConfigured()){
+    list.innerHTML=`<div style="padding:16px 10px;color:var(--muted);font-size:11.5px;line-height:1.7;">Configure your Turso database using the ⚙ button above to get started.</div>`;
+    return;
+  }
+  if(!state.monthOrder.length){
+    list.innerHTML=`<div style="padding:16px 10px;color:var(--muted);font-size:11.5px;line-height:1.7;">${isAdmin()?'No billing months yet.<br>Click "+ New Month Bill" to start.':'No billing data. Admin must create the first bill.'}</div>`;
+    return;
+  }
+  const latest=state.monthOrder[state.monthOrder.length-1];
+  list.innerHTML=state.monthOrder.slice().reverse().map(key=>{
+    const m=state.months[key];
+    const collected=Object.values(m.flats).reduce((s,f)=>s+f.paid,0);
+    const isCurrent=key===latest;
+    const paidCt=Object.values(m.flats).filter(f=>f.status==='paid').length;
+    return `<div class="month-item ${key===selectedMonth?'active':''}" data-key="${key}">
+      <div class="mlabel"><span>${m.label}</span><span class="mtag ${isCurrent?'current':''}">${isCurrent?'CURRENT':'ARCHIVED'}</span></div>
+      <div class="msub">${inr(collected)} of ${inr(m.totalAmount)} · ${paidCt}/${TOTAL_FLATS} paid</div>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.month-item').forEach(el=>el.addEventListener('click',()=>{selectedMonth=el.dataset.key;render();}));
+}
+
+/* ============================================================
+   MAIN RENDER
+   ============================================================ */
+function render(){
+  renderAuthBox();
+  renderSidebar();
+  const main=document.getElementById('main');
+  if(!isTursoConfigured()){
+    main.innerHTML=`<div class="empty">
+      <h2>Welcome 👋</h2>
+      <p>Connect your free Turso cloud database to get started. Your billing data will be stored in the cloud — accessible from any browser, any device.</p>
+      <br>
+      <div class="setup-box">
+        <h3>Quick Setup</h3>
+        <p style="font-size:12.5px;color:var(--muted);line-height:1.7;">
+          Open this HTML file and set your credentials near the top of the &lt;script&gt; block:
+        </p>
+        <pre style="background:var(--panel3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;font-size:11.5px;color:var(--accent2);overflow-x:auto;">const TURSO_URL   = 'https://your-db.turso.io';
+const TURSO_TOKEN = 'your-token-here';</pre>
+        <div class="setup-hint">Get these from <strong>turso.tech</strong> → your database → Settings → Tokens.<br>Then save the file and reload this page.</div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button class="btn primary" id="quickConnectBtn" style="flex:1;">🔄 Retry Connection</button>
+        </div>
+      </div>
+    </div>`;
+    document.getElementById('quickConnectBtn').onclick=async()=>{
+      const btn=document.getElementById('quickConnectBtn');
+      btn.innerHTML='<span class="spinner"></span>Connecting…';btn.disabled=true;
+      updateDbUI('loading','Connecting…');
+      const ok=await loadState();
+      if(ok){render();toast('✅ Connected to Turso!','ok');}
+      else{btn.innerHTML='🔄 Retry Connection';btn.disabled=false;toast('Connection failed — check TURSO_URL/TURSO_TOKEN in the code','err');}
+    };
+    return;
+  }
+  if(!selectedMonth||!state.months[selectedMonth]){
+    main.innerHTML=`<div class="empty">
+      <h2>Connected ✅</h2>
+      <p>${isAdmin()?`Click "+ New Month Bill" in the sidebar to create the first monthly water bill. The total will be split equally across all ${TOTAL_FLATS} flats, and unpaid balances carry forward automatically.`:'No billing data available yet. Please check back once Admin publishes the first bill.'}</p>
+    </div>`;
+    return;
+  }
+  const key=selectedMonth,m=state.months[key];
+  const flatsArr=ALL_FLATS.map(f=>({...f,...m.flats[f.id]}));
+  const collected=round2(flatsArr.reduce((s,f)=>s+f.paid,0));
+  const pending=round2(flatsArr.reduce((s,f)=>s+f.balance,0));
+  const paidCount=flatsArr.filter(f=>f.status==='paid').length;
+  const partialCount=flatsArr.filter(f=>f.status==='partial').length;
+  const isLatest=key===state.monthOrder[state.monthOrder.length-1];
+  const admin=isAdmin();
+
+  main.innerHTML=`
+    <div id="topbar">
+      <div>
+        <h2>${m.label} ${!isLatest?'<span style="font-size:11px;color:var(--muted);font-weight:400;">(archived)</span>':''}</h2>
+        <div class="sub">Total bill ${inr(m.totalAmount)} ÷ ${TOTAL_FLATS} flats = ${inr(m.baseShare)} base share per flat</div>
+      </div>
+      <div class="btnrow">
+        <div class="viewToggle">
+          <button id="viewGridBtn" class="${currentView==='grid'?'active':''}">🔲 Block View</button>
+          <button id="viewTableBtn" class="${currentView==='table'?'active':''}">📋 Table View</button>
+        </div>
+        ${admin?`
+          <button class="btn" id="editTotalBtn">✎ Edit Bill</button>
+          ${m.hasBillFile?`<button class="btn" id="viewBillBtn">📎 Attachment</button>`:''}
+          <button class="btn" id="exportPdfBtn">⬇ PDF</button>
+          <button class="btn" id="exportXlsBtn">⬇ Excel</button>
+          <button class="btn danger" id="deleteMonthBtn">🗑 Delete</button>
+        `:`
+          ${m.hasBillFile?`<button class="btn" id="viewBillBtn">📎 View Bill</button>`:''}
+          <button class="btn" id="exportPdfBtn">⬇ PDF</button>
+          <button class="btn" id="exportXlsBtn">⬇ Excel</button>
+          <span class="lockbadge">🔒 Admin only edits</span>
+        `}
+      </div>
+    </div>
+    <div id="cards">
+      <div class="card"><div class="clabel">Total Bill</div><div class="cval">${inr(m.totalAmount)}</div></div>
+      <div class="card"><div class="clabel">Base Share / Flat</div><div class="cval">${inr(m.baseShare)}</div></div>
+      <div class="card paidcol"><div class="clabel">Collected</div><div class="cval">${inr(collected)}</div></div>
+      <div class="card pendcol"><div class="clabel">Pending</div><div class="cval">${inr(pending)}</div></div>
+      <div class="card"><div class="clabel">Paid / Partial / Unpaid</div><div class="cval" style="font-size:15px;margin-top:10px;">
+        <span style="color:var(--paid)">${paidCount}</span> / <span style="color:var(--partial)">${partialCount}</span> / <span style="color:var(--unpaid)">${TOTAL_FLATS-paidCount-partialCount}</span>
+      </div></div>
+    </div>
+    <div id="controls">
+      <input type="text" id="searchInput" placeholder="🔍 Search flat (e.g. A-301)" value="${filters.search}">
+      <select id="blockFilter">
+        <option value="ALL">All Blocks</option>
+        ${BLOCKS.map(b=>`<option value="${b.block}" ${filters.block===b.block?'selected':''}>Block ${b.block}</option>`).join('')}
+      </select>
+      <select id="statusFilter">
+        <option value="ALL" ${filters.status==='ALL'?'selected':''}>All Status</option>
+        <option value="paid" ${filters.status==='paid'?'selected':''}>✅ Paid</option>
+        <option value="partial" ${filters.status==='partial'?'selected':''}>🟡 Partial</option>
+        <option value="unpaid" ${filters.status==='unpaid'?'selected':''}>🔴 Unpaid</option>
+      </select>
+    </div>
+    <div class="legend">
+      <span><i class="paid"></i> Paid</span>
+      <span><i class="partial"></i> Partially Paid</span>
+      <span><i class="unpaid"></i> Unpaid</span>
+      <span style="margin-left:auto;font-size:11px;">${admin?'Click a flat to edit payment':'Hover a flat to view details'}</span>
+    </div>
+    <div id="viewContainer"></div>`;
+
+  currentView==='grid'?renderBlockGrid(key,flatsArr):renderTableView(key,flatsArr);
+  document.getElementById('viewGridBtn').onclick=()=>{currentView='grid';render();};
+  document.getElementById('viewTableBtn').onclick=()=>{currentView='table';render();};
+  document.getElementById('exportPdfBtn').onclick=()=>exportPDF(key);
+  document.getElementById('exportXlsBtn').onclick=()=>exportExcel(key);
+  if(admin){
+    document.getElementById('editTotalBtn').onclick=()=>openEditTotalModal(key);
+    document.getElementById('deleteMonthBtn').onclick=()=>openDeleteConfirm(key);
+  }
+  const vb=document.getElementById('viewBillBtn');
+  if(vb) vb.onclick=()=>openBillViewerModal(key,false);
+  document.getElementById('searchInput').oninput=e=>{filters.search=e.target.value;refreshView(key,flatsArr);};
+  document.getElementById('blockFilter').onchange=e=>{filters.block=e.target.value;refreshView(key,flatsArr);};
+  document.getElementById('statusFilter').onchange=e=>{filters.status=e.target.value;refreshView(key,flatsArr);};
+}
+
+function refreshView(key,flatsArr){currentView==='grid'?renderBlockGrid(key,flatsArr):renderTableView(key,flatsArr);}
+function applyFilters(flatsArr){
+  const search=filters.search.trim().toUpperCase();
+  return flatsArr.filter(f=>{
+    if(filters.block!=='ALL'&&f.block!==filters.block) return false;
+    if(filters.status!=='ALL'&&f.status!==filters.status) return false;
+    if(search&&!f.id.toUpperCase().includes(search)) return false;
+    return true;
+  });
+}
+
+/* ============================================================
+   BLOCK GRID VIEW
+   ============================================================ */
+function renderBlockGrid(key,flatsArr){
+  const container=document.getElementById('viewContainer');
+  const filtered=applyFilters(flatsArr);
+  const filteredIds=new Set(filtered.map(f=>f.id));
+  const admin=isAdmin();
+  let html=`<div id="blockGrid">`;
+  for(const b of BLOCKS){
+    const blockFlats=flatsArr.filter(f=>f.block===b.block);
+    if(filters.block!=='ALL'&&filters.block!==b.block) continue;
+    const visible=blockFlats.filter(f=>filteredIds.has(f.id));
+    if(!visible.length&&(filters.search||filters.status!=='ALL')) continue;
+    const pCt=blockFlats.filter(f=>f.status==='paid').length;
+    const partCt=blockFlats.filter(f=>f.status==='partial').length;
+    html+=`<div class="block-card"><div class="bc-head">
+      <span class="bname">BLOCK ${b.block}</span>
+      <span class="bstats"><span style="color:var(--paid)">${pCt} paid</span> · <span style="color:var(--partial)">${partCt} partial</span> · <span style="color:var(--unpaid)">${blockFlats.length-pCt-partCt} unpaid</span></span>
+    </div><div class="bc-body">`;
+    for(const fl of FLOORS){
+      const rowFlats=blockFlats.filter(f=>f.floor===fl.code&&filteredIds.has(f.id));
+      if(!rowFlats.length) continue;
+      html+=`<div class="bc-row"><div class="bc-floor">${fl.code}</div><div class="bc-tiles">`;
+      for(const f of rowFlats) html+=`<div class="tile status-${f.status} ${admin?'admin-edit':''}" data-flat="${f.id}"><b>${f.num}</b></div>`;
+      html+=`</div></div>`;
+    }
+    html+=`</div></div>`;
+  }
+  html+=`</div>`;
+  if(!filtered.length) html=`<div class="empty" style="padding:40px 0;">No flats match this filter.</div>`;
+  container.innerHTML=html;
+  const flatMap={};flatsArr.forEach(f=>flatMap[f.id]=f);
+  container.querySelectorAll('.tile').forEach(tile=>{
+    const fid=tile.dataset.flat,f=flatMap[fid];
+    tile.addEventListener('mouseenter',e=>showTooltip(e,f));
+    tile.addEventListener('mousemove',moveTooltip);
+    tile.addEventListener('mouseleave',hideTooltip);
+    if(admin) tile.addEventListener('click',()=>{hideTooltip();openPaymentModal(key,fid);});
+  });
+}
+function showTooltip(e,f){
+  const tt=document.getElementById('flatTooltip');
+  tt.innerHTML=`
+    <div class="tt-title">Flat ${f.id} <span style="color:var(--muted);font-weight:400;font-size:11px;">(${f.floor})</span></div>
+    <div class="tt-row"><span>Base Share</span><b>${inr(f.due-f.carryForward)}</b></div>
+    <div class="tt-row"><span>Carry Forward</span><b>${inr(f.carryForward)}</b></div>
+    <div class="tt-row"><span>Total Due</span><b>${inr(f.due)}</b></div>
+    <div class="tt-row"><span>Paid</span><b>${inr(f.paid)}</b></div>
+    <div class="tt-row"><span>Balance</span><b style="color:${f.balance>0.004?'var(--unpaid)':'var(--paid)'}">${inr(f.balance)}</b></div>
+    <div class="tt-row"><span>Paid On</span><b>${f.paidDate||'—'}</b></div>
+    <div class="tt-status" style="color:${f.status==='paid'?'var(--paid)':f.status==='partial'?'var(--partial)':'var(--unpaid)'}">${f.status.toUpperCase()}</div>`;
+  tt.style.display='block';moveTooltip(e);
+}
+function moveTooltip(e){
+  const tt=document.getElementById('flatTooltip');
+  let x=e.clientX+16,y=e.clientY+16;
+  if(x+220>window.innerWidth) x=e.clientX-220;
+  if(y+200>window.innerHeight) y=e.clientY-200;
+  tt.style.left=x+'px';tt.style.top=y+'px';
+}
+function hideTooltip(){document.getElementById('flatTooltip').style.display='none';}
+
+/* ============================================================
+   TABLE VIEW
+   ============================================================ */
+function renderTableView(key,flatsArr){
+  const container=document.getElementById('viewContainer');
+  const admin=isAdmin();
+  container.innerHTML=`<div class="table-wrap"><table>
+    <thead><tr>
+      <th>Flat</th><th class="num">Base Share</th><th class="num">Carry Fwd</th><th class="num">Total Due</th>
+      <th class="num">Paid</th><th class="num">Balance</th><th>Status</th><th>Paid On</th><th></th>
+    </tr></thead><tbody id="flatsBody"></tbody>
+  </table></div>`;
+  const filtered=applyFilters(flatsArr);
+  const body=document.getElementById('flatsBody');
+  let html='',lastBlock=null;
+  for(const f of filtered){
+    if(f.block!==lastBlock){html+=`<tr class="block-sep"><td colspan="9">BLOCK ${f.block}</td></tr>`;lastBlock=f.block;}
+    html+=`<tr>
+      <td><strong>${f.id}</strong> <span style="color:var(--muted);font-size:11px;">(${f.floor})</span></td>
+      <td class="num">${inr(f.due-f.carryForward)}</td>
+      <td class="num">${inr(f.carryForward)}</td>
+      <td class="num">${inr(f.due)}</td>
+      <td class="num">${inr(f.paid)}</td>
+      <td class="num" style="color:${f.balance>0.004?'var(--unpaid)':'var(--muted)'}">${inr(f.balance)}</td>
+      <td><span class="status-chip ${f.status}">${f.status.toUpperCase()}</span></td>
+      <td style="color:var(--muted);font-size:12px;">${f.paidDate||'—'}</td>
+      <td><button class="paybtn" data-flat="${f.id}" ${admin?'':'disabled'}>💳 ${admin?'Edit':'View'}</button></td>
+    </tr>`;
+  }
+  if(!filtered.length) html=`<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:40px;">No flats match this filter.</td></tr>`;
+  body.innerHTML=html;
+  body.querySelectorAll('.paybtn').forEach(btn=>{btn.onclick=()=>{if(admin)openPaymentModal(key,btn.dataset.flat);};});
+}
+
+/* ============================================================
+   MODALS
+   ============================================================ */
+function closeModal(){document.getElementById('modalRoot').innerHTML='';}
+function toast(msg,type='ok'){
+  const t=document.createElement('div');
+  t.className=`toast ${type}`;t.textContent=msg;
+  document.getElementById('toastContainer').appendChild(t);
+  setTimeout(()=>t.remove(),3000);
+}
+function setBtnLoading(id,loading,label){
+  const b=document.getElementById(id);if(!b)return;
+  b.disabled=loading;
+  b.innerHTML=loading?`<span class="spinner"></span>${label||'Saving…'}`:label||'Save';
+}
+
+/* ---- new month ---- */
+function openNewMonthModal(){
+  if(!isAdmin()){openLoginModal();return;}
+  const today=new Date();
+  let k=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+  while(state.months[k]){const[y,mo]=k.split('-').map(Number);const d=new Date(y,mo,1);k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+  document.getElementById('modalRoot').innerHTML=`
+    <div class="overlay" id="ov"><div class="modal">
+      <h3>➕ New Monthly Bill</h3>
+      <label>Billing Month</label><input type="month" id="mMonth" value="${k}">
+      <label>Upload Water Bill (optional)</label>
+      <input type="file" id="mBillFile" accept="image/*,application/pdf">
+      <div id="mFilePreview" style="margin-top:8px;"></div>
+      <button class="btn" id="autoReadBtn" style="display:none;margin-top:8px;">🔍 Auto-Read Amount from Bill</button>
+      <div class="hint" id="autoReadStatus"></div>
+      <label>Total Water Bill Amount (₹)</label>
+      <input type="number" id="mTotal" min="0" step="0.01" placeholder="e.g. 48000">
+      <div class="hint">Divided equally among all ${TOTAL_FLATS} flats. Unpaid balance from previous month carries forward automatically.</div>
+      <div class="err" id="mErr"></div>
+      <div class="modalbtns">
+        <button class="btn" id="cancelBtn">Cancel</button>
+        <button class="btn primary" id="createBtn">Create Bill</button>
+      </div>
+    </div></div>`;
+  document.getElementById('cancelBtn').onclick=closeModal;
+  document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
+  let pendingFile=null;
+  document.getElementById('mBillFile').onchange=async(e)=>{
+    const file=e.target.files[0],pre=document.getElementById('mFilePreview'),ab=document.getElementById('autoReadBtn');
+    ab.style.display='none';document.getElementById('autoReadStatus').textContent='';
+    if(!file){pendingFile=null;pre.innerHTML='';return;}
+    let durl=await readFileAsDataUrl(file);
+    if(file.type.startsWith('image/')){durl=await resizeImageDataUrl(durl);pre.innerHTML=`<img src="${durl}" style="max-width:100%;max-height:130px;border-radius:8px;border:1px solid var(--border);">`;ab.style.display='inline-flex';}
+    else pre.innerHTML=`<div class="hint" style="margin-top:0;">📄 ${file.name} attached</div>`;
+    pendingFile={name:file.name,type:file.type.startsWith('image/')?'image/jpeg':file.type,dataUrl:durl};
+  };
+  document.getElementById('autoReadBtn').onclick=async()=>{
+    if(!pendingFile)return;
+    const btn=document.getElementById('autoReadBtn'),st=document.getElementById('autoReadStatus');
+    btn.disabled=true;btn.textContent='🔍 Reading…';
+    try{
+      const res=await extractAmountFromImage(pendingFile.dataUrl,pendingFile.type);
+      const mm=res.match(/[\d.]+/);
+      if(res.includes('UNKNOWN')||!mm)st.textContent='⚠ Could not read — enter manually.';
+      else{document.getElementById('mTotal').value=parseFloat(mm[0]);st.textContent=`✅ Detected ${inr(parseFloat(mm[0]))} — please verify.`;}
+    }catch(e){st.textContent='⚠ Auto-read failed — enter manually.';}
+    btn.disabled=false;btn.textContent='🔍 Auto-Read Amount from Bill';
+  };
+  document.getElementById('createBtn').onclick=async()=>{
+    const mv=document.getElementById('mMonth').value;
+    const total=parseFloat(document.getElementById('mTotal').value);
+    const errEl=document.getElementById('mErr');
+    if(!mv){errEl.textContent='Select a month';return;}
+    if(state.months[mv]){errEl.textContent='Bill for this month already exists';return;}
+    if(isNaN(total)||total<0){errEl.textContent='Enter a valid bill amount';return;}
+    setBtnLoading('createBtn',true,'Saving to Turso…');
+    try{
+      await createMonth(mv,monthLabel(mv),total);
+      if(pendingFile) await saveBillFile(mv,pendingFile.name,pendingFile.type,pendingFile.dataUrl);
+      selectedMonth=mv;closeModal();render();toast(`✅ ${monthLabel(mv)} bill created`,'ok');
+    }catch(e){errEl.textContent='❌ Save failed: '+e.message;setBtnLoading('createBtn',false,'Create Bill');}
+  };
+}
+
+/* ---- edit total ---- */
+function openEditTotalModal(key){
+  if(!isAdmin())return;
+  const m=state.months[key];
+  const isLast=key===state.monthOrder[state.monthOrder.length-1];
+  document.getElementById('modalRoot').innerHTML=`
+    <div class="overlay" id="ov"><div class="modal">
+      <h3>✎ Edit Bill — ${m.label}</h3>
+      <label>${m.hasBillFile?'Replace':'Upload'} Water Bill (optional)</label>
+      <input type="file" id="eBillFile" accept="image/*,application/pdf">
+      <div id="eFilePreview" style="margin-top:8px;"></div>
+      <button class="btn" id="eAutoReadBtn" style="display:none;margin-top:8px;">🔍 Auto-Read Amount from Bill</button>
+      <div class="hint" id="eAutoReadStatus"></div>
+      ${m.hasBillFile?`<button class="btn" id="eViewCurrentBtn" style="margin-top:6px;">📎 View Current Attachment</button>`:''}
+      <label>Total Water Bill Amount (₹)</label>
+      <input type="number" id="eTotal" min="0" step="0.01" value="${m.totalAmount}">
+      ${!isLast?`<div class="checkrow"><input type="checkbox" id="ePropagate" checked><label for="ePropagate" style="margin:0;">Recalculate carry-forward in later months</label></div>`:''}
+      <div class="err" id="eErr"></div>
+      <div class="modalbtns">
+        <button class="btn" id="cancelBtn">Cancel</button>
+        <button class="btn primary" id="saveBtn">Save Changes</button>
+      </div>
+    </div></div>`;
+  document.getElementById('cancelBtn').onclick=closeModal;
+  document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
+  if(m.hasBillFile){const vb=document.getElementById('eViewCurrentBtn');if(vb)vb.onclick=()=>openBillViewerModal(key,true);}
+  let pendingFile=null;
+  document.getElementById('eBillFile').onchange=async(e)=>{
+    const file=e.target.files[0],pre=document.getElementById('eFilePreview'),ab=document.getElementById('eAutoReadBtn');
+    ab.style.display='none';document.getElementById('eAutoReadStatus').textContent='';
+    if(!file){pendingFile=null;pre.innerHTML='';return;}
+    let durl=await readFileAsDataUrl(file);
+    if(file.type.startsWith('image/')){durl=await resizeImageDataUrl(durl);pre.innerHTML=`<img src="${durl}" style="max-width:100%;max-height:130px;border-radius:8px;border:1px solid var(--border);">`;ab.style.display='inline-flex';}
+    else pre.innerHTML=`<div class="hint" style="margin-top:0;">📄 ${file.name}</div>`;
+    pendingFile={name:file.name,type:file.type.startsWith('image/')?'image/jpeg':file.type,dataUrl:durl};
+  };
+  document.getElementById('eAutoReadBtn').onclick=async()=>{
+    if(!pendingFile)return;
+    const btn=document.getElementById('eAutoReadBtn'),st=document.getElementById('eAutoReadStatus');
+    btn.disabled=true;btn.textContent='🔍 Reading…';
+    try{const res=await extractAmountFromImage(pendingFile.dataUrl,pendingFile.type);const mm=res.match(/[\d.]+/);
+      if(res.includes('UNKNOWN')||!mm)st.textContent='⚠ Could not read — enter manually.';
+      else{document.getElementById('eTotal').value=parseFloat(mm[0]);st.textContent=`✅ Detected ${inr(parseFloat(mm[0]))} — please verify.`;}
+    }catch(e){st.textContent='⚠ Auto-read failed.';}
+    btn.disabled=false;btn.textContent='🔍 Auto-Read Amount from Bill';
+  };
+  document.getElementById('saveBtn').onclick=async()=>{
+    const total=parseFloat(document.getElementById('eTotal').value);
+    const errEl=document.getElementById('eErr');
+    if(isNaN(total)||total<0){errEl.textContent='Enter a valid amount';return;}
+    const prop=document.getElementById('ePropagate')?document.getElementById('ePropagate').checked:true;
+    setBtnLoading('saveBtn',true,'Saving…');
+    try{
+      await editMonthTotal(key,total,prop);
+      if(pendingFile) await saveBillFile(key,pendingFile.name,pendingFile.type,pendingFile.dataUrl);
+      closeModal();render();toast('✅ Bill updated','ok');
+    }catch(e){errEl.textContent='❌ Save failed: '+e.message;setBtnLoading('saveBtn',false,'Save Changes');}
+  };
+}
+
+/* ---- bill viewer ---- */
+function openBillViewerModal(key,fromEdit){
+  const m=state.months[key];
+  document.getElementById('modalRoot').innerHTML=`
+    <div class="overlay" id="ov2" style="z-index:1100;"><div class="modal" style="width:520px;">
+      <h3>📎 Water Bill — ${m.label}</h3>
+      <div id="viewerBody" style="min-height:120px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;"><span class="spinner"></span> Loading…</div>
+      <div class="modalbtns">
+        ${isAdmin()?`<button class="btn danger" id="removeFileBtn">🗑 Remove</button>`:''}
+        <button class="btn" id="closeViewerBtn">Close</button>
+      </div>
+    </div></div>`;
+  const close=()=>{closeModal();if(fromEdit)openEditTotalModal(key);};
+  document.getElementById('closeViewerBtn').onclick=close;
+  document.getElementById('ov2').addEventListener('click',e=>{if(e.target.id==='ov2')close();});
+  getBillFile(key).then(file=>{
+    const body=document.getElementById('viewerBody');if(!body)return;
+    if(!file){body.innerHTML='No bill attached.';return;}
+    if(file.type.startsWith('image/'))body.innerHTML=`<img src="${file.dataUrl}" style="max-width:100%;border-radius:8px;">`;
+    else body.innerHTML=`<iframe src="${file.dataUrl}" style="width:100%;height:400px;border:none;border-radius:8px;"></iframe>`;
+    const rem=document.getElementById('removeFileBtn');
+    if(rem)rem.onclick=async()=>{await deleteBillFile(key);closeModal();render();toast('Attachment removed');};
+  });
+}
+
+/* ---- payment modal ---- */
+function openPaymentModal(key,flatId){
+  if(!isAdmin()){openLoginModal();return;}
+  const m=state.months[key],f=m.flats[flatId];
+  const isLast=key===state.monthOrder[state.monthOrder.length-1];
+  const cur=f.status;
+  document.getElementById('modalRoot').innerHTML=`
+    <div class="overlay" id="ov"><div class="modal">
+      <h3>💳 Payment — ${flatId}</h3>
+      <div class="hint" style="margin-top:0;">Total Due: <strong style="color:var(--text)">${inr(f.due)}</strong> = base ${inr(f.due-f.carryForward)} + carry-forward ${inr(f.carryForward)}</div>
+      <label>Payment Status</label>
+      <select id="pStatus">
+        <option value="paid" ${cur==='paid'?'selected':''}>✅ Paid (full amount)</option>
+        <option value="partial" ${cur==='partial'?'selected':''}>🟡 Partially Paid</option>
+        <option value="unpaid" ${cur==='unpaid'?'selected':''}>🔴 Unpaid</option>
+      </select>
+      <label>Amount Paid (₹)</label>
+      <input type="number" id="pAmount" min="0" step="0.01" value="${f.paid}">
+      <label>Payment Date</label>
+      <input type="date" id="pDate" value="${f.paidDate||new Date().toISOString().slice(0,10)}">
+      ${!isLast?`<div class="checkrow"><input type="checkbox" id="pPropagate" checked><label for="pPropagate" style="margin:0;">Recalculate carry-forward in later months</label></div>`:''}
+      <div class="err" id="pErr"></div>
+      <div class="modalbtns">
+        <button class="btn" id="cancelBtn">Cancel</button>
+        <button class="btn primary" id="saveBtn">Save Payment</button>
+      </div>
+    </div></div>`;
+  const statusEl=document.getElementById('pStatus'),amtEl=document.getElementById('pAmount'),dateEl=document.getElementById('pDate');
+  function applyStatus(s){
+    if(s==='paid'){amtEl.value=f.due;amtEl.readOnly=true;dateEl.disabled=false;}
+    else if(s==='unpaid'){amtEl.value=0;amtEl.readOnly=true;dateEl.value='';}
+    else{amtEl.readOnly=false;if(parseFloat(amtEl.value)<=0||parseFloat(amtEl.value)>=f.due||isNaN(parseFloat(amtEl.value)))amtEl.value=f.paid>0&&f.paid<f.due?f.paid:round2(f.due/2);if(!dateEl.value)dateEl.value=new Date().toISOString().slice(0,10);}
+  }
+  applyStatus(cur);statusEl.onchange=()=>applyStatus(statusEl.value);
+  document.getElementById('cancelBtn').onclick=closeModal;
+  document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
+  document.getElementById('saveBtn').onclick=async()=>{
+    const s=statusEl.value;let amt=parseFloat(amtEl.value);
+    const errEl=document.getElementById('pErr');
+    if(isNaN(amt)||amt<0){errEl.textContent='Enter a valid amount';return;}
+    if(s==='partial'&&amt>=f.due){errEl.textContent='Partial must be less than total due';return;}
+    if(s==='partial'&&amt<=0){errEl.textContent='Partial must be greater than ₹0';return;}
+    const date=s==='unpaid'?null:dateEl.value;
+    const prop=document.getElementById('pPropagate')?document.getElementById('pPropagate').checked:true;
+    setBtnLoading('saveBtn',true,'Saving…');
+    try{
+      await recordPayment(key,flatId,amt,date,prop);
+      closeModal();render();toast(`✅ ${flatId} marked ${s.toUpperCase()}`,'ok');
+    }catch(e){errEl.textContent='❌ Save failed: '+e.message;setBtnLoading('saveBtn',false,'Save Payment');}
+  };
+}
+
+/* ---- delete month ---- */
+function openDeleteConfirm(key){
+  if(!isAdmin())return;
+  const m=state.months[key];
+  document.getElementById('modalRoot').innerHTML=`
+    <div class="overlay" id="ov"><div class="modal">
+      <h3>🗑 Delete ${m.label}?</h3>
+      <div class="hint" style="margin-top:0;">This permanently removes this month's bill and all payment records from Turso. <strong style="color:var(--unpaid);">Cannot be undone.</strong></div>
+      <div class="err" id="dErr"></div>
+      <div class="modalbtns">
+        <button class="btn" id="cancelBtn">Cancel</button>
+        <button class="btn danger" id="delBtn">Delete Month</button>
+      </div>
+    </div></div>`;
+  document.getElementById('cancelBtn').onclick=closeModal;
+  document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
+  document.getElementById('delBtn').onclick=async()=>{
+    setBtnLoading('delBtn',true,'Deleting…');
+    try{
+      await deleteMonth(key);
+      selectedMonth=state.monthOrder.length?state.monthOrder[state.monthOrder.length-1]:null;
+      closeModal();render();toast('Month deleted');
+    }catch(e){document.getElementById('dErr').textContent='❌ '+e.message;setBtnLoading('delBtn',false,'Delete Month');}
+  };
+}
+
+/* ============================================================
+   EXPORTS
+   ============================================================ */
+function exportPDF(key){
+  const m=state.months[key];
+  const{jsPDF}=window.jspdf;const doc=new jsPDF();
+  doc.setFontSize(16);doc.text('Water Billing Statement',14,16);
+  doc.setFontSize(10);doc.setTextColor(100);
+  doc.text(`${m.label}  ·  Total Bill: ${inr(m.totalAmount)}  ·  Base Share: ${inr(m.baseShare)}`,14,24);
+  const collected=Object.values(m.flats).reduce((s,f)=>s+f.paid,0);
+  const pending=round2(Object.values(m.flats).reduce((s,f)=>s+f.balance,0));
+  doc.text(`Collected: ${inr(collected)}   Pending: ${inr(pending)}`,14,30);
+  const rows=ALL_FLATS.map(f=>{const d=m.flats[f.id];return[f.id,inr(d.carryForward),inr(d.due),inr(d.paid),inr(d.balance),d.status.toUpperCase(),d.paidDate||'—'];});
+  doc.autoTable({startY:36,head:[['Flat','Carry Fwd','Total Due','Paid','Balance','Status','Paid On']],body:rows,styles:{fontSize:8,cellPadding:2},headStyles:{fillColor:[20,60,110]},
+    didParseCell(data){if(data.section==='body'&&data.column.index===5){const v=data.cell.raw;if(v==='PAID')data.cell.styles.textColor=[34,150,80];else if(v==='PARTIAL')data.cell.styles.textColor=[180,140,10];else data.cell.styles.textColor=[200,40,40];}}
+  });
+  doc.save(`WaterBill_${key}.pdf`);toast('⬇ PDF downloaded','ok');
+}
+function exportExcel(key){
+  const m=state.months[key];
+  const header=['Flat ID','Block','Floor','Base Share','Carry Forward','Total Due','Paid','Balance','Status','Paid On'];
+  const rows=ALL_FLATS.map(f=>{const d=m.flats[f.id];return[f.id,f.block,f.floor,round2(d.due-d.carryForward),d.carryForward,d.due,d.paid,d.balance,d.status,d.paidDate||''];});
+  const ws=XLSX.utils.aoa_to_sheet([[`Water Billing Statement — ${m.label}`],[`Total Bill: ${m.totalAmount}   Base Share: ${m.baseShare}`],[],header,...rows]);
+  ws['!cols']=header.map(()=>({wch:15}));
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,key);
+  XLSX.writeFile(wb,`WaterBill_${key}.xlsx`);toast('⬇ Excel downloaded','ok');
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+async function init(){
+  document.getElementById('configBtn').onclick=openConfigModal;
+  document.getElementById('newMonthBtn').onclick=openNewMonthModal;
+  document.getElementById('flatCountLabel').textContent=`${TOTAL_FLATS} Flats · Blocks ${BLOCKS[0].block}–${BLOCKS[BLOCKS.length-1].block}`;
+  if(isTursoConfigured()){
+    updateDbUI('loading','Connecting…');
+    const ok=await loadState();
+    if(!ok) updateDbUI('err','Connection failed');
+  } else {
+    updateDbUI('off','Not configured');
+  }
+  render();
+}
+init();
+</script>
+</body>
+</html>
